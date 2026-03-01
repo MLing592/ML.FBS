@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <!-- 面部渐变色 -->
+    <radialGradient id="faceGrad" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+      <stop offset="0%" stop-color="#fee685" />
+      <stop offset="80%" stop-color="#f5b841" />
+      <stop offset="100%" stop-color="#e68a1a" />
+    </radialGradient>
+  </defs>
+
+  <!-- 大圆脸 -->
+  <path d="M 10 100 C 10 50.3 50.3 10 100 10 C 149.7 10 190 50.3 190 100 C 190 149.7 149.7 190 100 190 C 50.3 190 10 149.7 10 100 Z" fill="url(#faceGrad)" stroke="#f59e0b" stroke-width="4"/>
+  
+  <!-- 左边腮红 -->
+  <path d="M 30 100 C 30 90 70 90 70 100 C 70 110 30 110 30 100 Z" fill="#fca5a5" opacity="0.7"/>
+
+  <!-- 右边腮红 -->
+  <path d="M 130 100 C 130 90 170 90 170 100 C 170 110 130 110 130 100 Z" fill="#fca5a5" opacity="0.7"/>
+
+  <!-- 左眼眼白 (眯眼看左偏上) -->
+  <path d="M 35 65 Q 60 45 85 65 Q 60 62 35 65" fill="#ffffff" stroke="#e0a82e" stroke-width="1"/>
+  
+  <!-- 右眼眼白 (眯眼看左偏上) -->
+  <path d="M 105 65 Q 135 45 165 65 Q 135 62 105 65" fill="#ffffff" stroke="#e0a82e" stroke-width="1"/>
+
+  <!-- 左眼瞳孔 (深褐色小圆，偏左) -->
+  <path d="M 40 61 C 40 58 48 58 48 61 C 48 64 40 64 40 61 Z" fill="#451a03"/>
+
+  <!-- 右眼瞳孔 (深褐色小圆，偏左) -->
+  <path d="M 110 61 C 110 58 118 58 118 61 C 118 64 110 64 110 61 Z" fill="#451a03"/>
+
+  <!-- 左挑逗眉毛 -->
+  <path d="M 35 45 Q 60 20 80 50" fill="none" stroke="#2a1805" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- 右挑逗眉毛 -->
+  <path d="M 115 50 Q 130 20 160 45" fill="none" stroke="#2a1805" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- 经典滑稽邪笑 -->
+  <path d="M 35 110 C 60 170 140 170 165 110" fill="none" stroke="#451a03" stroke-width="7" stroke-linecap="round"/>
+</svg>

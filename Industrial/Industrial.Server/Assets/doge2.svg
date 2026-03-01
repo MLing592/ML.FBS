@@ -1,0 +1,31 @@
+<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+  <!-- 面部渐变色 -->
+  <radialGradient id="faceGrad" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+   <stop offset="0%" stop-color="#fee685"/>
+   <stop offset="80%" stop-color="#f5b841"/>
+   <stop offset="100%" stop-color="#e68a1a"/>
+  </radialGradient>
+ </defs>
+ <!-- 大圆脸 -->
+ <!-- 左边腮红 -->
+ <!-- 右边腮红 -->
+ <!-- 左眼眼白 (眯眼看左偏上) -->
+ <!-- 右眼眼白 (眯眼看左偏上) -->
+ <!-- 左眼瞳孔 (深褐色小圆，偏左) -->
+ <!-- 右眼瞳孔 (深褐色小圆，偏左) -->
+ <!-- 左挑逗眉毛 -->
+ <!-- 右挑逗眉毛 -->
+ <!-- 经典滑稽邪笑 -->
+  <path d="m10.30303,99.69697c0,-49.7 40.3,-90 90,-90c49.7,0 90,40.3 90,90c0,49.7 -40.3,90 -90,90c-49.7,0 -90,-40.3 -90,-90z" fill="url(#faceGrad)" stroke="#f59e0b" stroke-width="4" id="svg_1"/>
+  <path d="m20.60608,73.63641c0,-10 40,-10 40,0c0,10 -40,10 -40,0z" fill="#fca5a5" opacity="0.7" id="svg_2"/>
+  <path d="m137.57574,73.93944c0,-10 40,-10 40,0c0,10 -40,10 -40,0z" fill="#fca5a5" opacity="0.7" id="svg_3"/>
+  <path d="m125.17008,38.44269q18.38345,-21.11113 55.15034,-3.51852" fill="none" stroke-width="6" stroke-linecap="round" id="svg_9" stroke="#2a1805" transform="rotate(-17.8913 152.745 32.6851)"/>
+  <path d="m35,110c27.42424,70.60604 105,60 130,0" fill="none" stroke="#451a03" stroke-width="7" stroke-linecap="round" id="svg_10"/>
+  <path d="m131.96953,59.25082q25,-14.35188 45,2.87037" fill="none" stroke-linecap="round" id="svg_13" stroke="#fcfcfc" stroke-width="12"/>
+  <path d="m130.30287,57.66667c0,-8.25251 12.24242,-8.25251 12.24242,0c0,8.25252 -12.24242,8.25252 -12.24242,0z" fill="#451a03" id="svg_14" stroke="null"/>
+  <path d="m18.25297,41.71719q17.98376,-21.11113 53.9513,-3.51852" fill="none" stroke-width="6" stroke-linecap="round" id="svg_15" stroke="#2a1805" transform="rotate(12.8969 45.2283 35.9596)"/>
+  <path d="m22.87881,59.84004" fill="none" stroke-linecap="round" id="svg_17" stroke-width="12" stroke="#fcfcfc"/>
+  <path d="m25.90911,57.43264q25,-14.35188 45,2.87037" fill="none" stroke-linecap="round" id="svg_18" stroke="#fcfcfc" stroke-width="12"/>
+  <path d="m24.24245,54.9394c0,-8.25251 12.24242,-8.25251 12.24242,0c0,8.25252 -12.24242,8.25252 -12.24242,0z" fill="#451a03" id="svg_19" stroke="null"/>
+</svg>

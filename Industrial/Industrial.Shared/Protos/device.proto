@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+option csharp_namespace = "Industrial.Shared.Protos";
+package device;
+
+// 定义设备控制的 gRPC 服务
+service DeviceControl {
+  // 1. 简单 RPC (Unary RPC): 发送单条控制指令
+  rpc SendCommand (CommandRequest) returns (CommandReply);
+  
+  // 2. 服务端流式 RPC (Server Streaming RPC): 获取长序列的历史轨迹数据
+  rpc GetHistoricalData (DataRequest) returns (stream PointData);
+  
+  // 3. 客户端流式 RPC (Client Streaming RPC): 上传大批量离线加工轨迹
+  rpc UploadBatchTrajectory (stream PointData) returns (UploadReply);
+  
+  // 4. 双向流式 RPC (Bidirectional Streaming RPC): 实时遥操作（一边发送机器手移动指令，一边接收实际偏差数据）
+  rpc LiveTeleoperation (stream TeleoperationCmd) returns (stream TeleoperationFeed);
+  
+  // 5. 服务端流式 RPC (Server Streaming RPC): 服务器解析 SVG 图并下发轨迹坐标
+  rpc DownloadSvgTrajectory (SvgRequest) returns (stream PointData);
+}
+
+// 请求下载指定的 SVG
+message SvgRequest {
+  string file_name = 1;
+}
+
+// 指令请求
+message CommandRequest {
+  int32 device_id = 1;
+  string action = 2; // 例如 "START", "STOP", "RESET"
+}
+
+// 指令响应
+message CommandReply {
+  bool success = 1;
+  string message = 2;
+}
+
+// 数据请求
+message DataRequest {
+  int32 device_id = 1;
+  string start_time = 2;
+}
+
+// 轨迹点数据 (gRPC 非常适合传输这类密集的结构化数据)
+message PointData {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  int64 timestamp = 4;
+}
+
+// 批量上传回复
+message UploadReply {
+  bool success = 1;
+  int32 total_points_received = 2;
+  string message = 3;
+}
+
+// 遥操作指令
+message TeleoperationCmd {
+  double target_velocity = 1;
+  double target_angle = 2;
+}
+
+// 遥操作反馈
+message TeleoperationFeed {
+  double actual_velocity = 1;
+  double actual_angle = 2;
+  string status_warning = 3;
+}
