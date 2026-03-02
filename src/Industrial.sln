@@ -39,6 +39,7 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
+		FileExplorer = Industrial.Vue\
 		SolutionGuid = {603E8270-FA48-4479-B367-D2AF478F0C04}
 	EndGlobalSection
 EndGlobal
