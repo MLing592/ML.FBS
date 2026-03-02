@@ -7,6 +7,7 @@ public interface IDeviceStatusClient
 {
     Task ReceiveTemperatureWarning(string deviceId, double temperature);
     Task UpdateMachineState(int stateCode, string description);
+    Task ReceiveCurrentTemperature(double temperature);
 }
 
 public class DeviceStatusHub : Hub<IDeviceStatusClient>

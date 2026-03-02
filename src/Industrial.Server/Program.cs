@@ -11,6 +11,9 @@ builder.Services.AddSignalR();
 // 注册 WebAPI (用以提供让外部系统或 WPF 去触发报警的 HTTP 接口)
 builder.Services.AddControllers();
 
+// 注册每3秒自动推送仿真数据的后台服务
+builder.Services.AddHostedService<DataSimulationWorker>();
+
 // 配置 CORS 以支持 Vue 客户端的 SignalR 和 WebAPI 请求
 builder.Services.AddCors(options =>
 {
@@ -32,12 +35,13 @@ app.UseCors("AllowVueClient");
 app.MapGrpcService<DeviceControlService>();
 app.MapHub<DeviceStatusHub>("/hubs/deviceStatus");
 
-// 一个供外部触发 SignalR 报警的路由
-app.MapPost("/api/alarm/trigger", async (Microsoft.AspNetCore.SignalR.IHubContext<DeviceStatusHub> hubContext) =>
+// 一个供外部触发主动拉取当前温度的路由
+app.MapPost("/api/temperature/push_current", async (Microsoft.AspNetCore.SignalR.IHubContext<DeviceStatusHub, IDeviceStatusClient> hubContext) =>
 {
-    // 向前连接的客户端群体广播警告
-    await hubContext.Clients.All.SendAsync("ReceiveTemperatureWarning", "REMOTE-TRIGGER-001", 99.9);
-    return Results.Ok(new { message = "Alarm triggered globally" });
+    // 向前端主动推一次最新正常温度
+    double currentTemp = 40.0 + new Random().NextDouble() * 15.0; 
+    await hubContext.Clients.Group("ValidClients").ReceiveCurrentTemperature(Math.Round(currentTemp, 1));
+    return Results.Ok(new { message = "Current temperature pushed" });
 });
 
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client.");
