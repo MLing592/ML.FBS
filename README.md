@@ -37,7 +37,8 @@ dotnet run
 1. 界面开启后，优先点击右上角的 **`Connect`** 以接通全局 gRPC 底层通道。
 2. 在 `Vibration Monitoring` 页签点击 **`Server Stream (Data)`**，欣赏源源不断的工业级毫秒震动曲线推送渲染。
 3. 在 `Trajectory & SVG Mapping` 页签点击 **`Download SVG Path`**，由后端通过矩阵变换剥离打碎 Svg 为极密坐标流向客户端传输并引发全屏绘制。
-4. 在右侧面板的底部，点击 **`Bidi Stream`** 体验全双工操作同步：左发请求、右接状态，两者在一条路跑通互不梗阻。
+4. 在 `Machine Vision & AI` 页签点击 **`Start Real-time Vision (Bidi Stream)`**，你将看到一个由 WPF 本地生成的假想“机械臂视觉侦测框”连续画面。以高达 30 帧的速率不断通过 gRPC 上传至服务端；服务端利用 `SixLabors.ImageSharp` 引擎进行工业级灰度转化和噪点过滤后，即时双向流式回传给 WPF 并在右侧屏幕渲染！
+5. 在最右侧面板的底部，点击 **`Bidi Stream`** 体验全双工遥控操作同步：左发请求、右接状态。
 
 ### 3. 启动 Vue Web 可视化大屏 (Vue UI)
 在第三个包含 Node.js 环境的终端中，执行：
@@ -200,5 +201,28 @@ sequenceDiagram
         API-->>Hub: 5. 获取 IHubContext<T> 集成
         Hub-->>Vue: 6. [Push 即时推流] 指定强发一条温度流给浏览器
         API-->>Vue: 7. 返回 200 HTTP Result OK
+    end
+```
+
+#### 🔘 双向流机器视觉与AI极速处理 (Live Machine Vision) —— 对应 `Start Real-time Vision` 按钮
+这个特性展示了针对真正的“工业相机”所带来的吞吐量压力。WPF 每秒生成 30 张高分辨率静态帧，通过 `ByteString` 直接拍进双向流。远端 ASP.NET 承接后不落地，使用 ImageSharp 在内存中完成工业级图像灰度萃取并立刻压回 Jpeg 返回。
+```mermaid
+sequenceDiagram
+    participant WPF as WpfClient (相机视频流模拟)
+    participant Server as ASP.NET Core (ImageSharp图像引擎)
+
+    note over WPF, Server: 1. 打开极其硬核的高清无缝双向管道
+
+    par 视频上行管线
+        loop 30帧/秒
+            WPF->>WPF: 捕获或伪造摄像头彩色图像并转码Jpeg
+            WPF-->>Server: 2. WriteAsync(VisionFrame Bytes)
+        end
+    and 处理与渲染截回管线
+        loop
+            Server->>Server: 3. 拦截 Byte[] 实施极速灰度 Mutate 处理
+            Server-->>WPF: 4. 回写灰度图像流
+            WPF->>WPF: 5. Decode 并同步渲染于 UI 的 Right Box
+        end
     end
 ```

@@ -12,6 +12,9 @@ using OxyPlot.Series;
 using OxyPlot.Axes;
 using System.Threading;
 using System.Windows.Input;
+using System.IO;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace Industrial.WpfClient.ViewModels
 {
@@ -59,6 +62,25 @@ namespace Industrial.WpfClient.ViewModels
         public PlotModel TrajectoryPlotModel { get; private set; }
         private ScatterSeries _trajectorySeries;
 
+        // --- 机器视觉相关属性 ---
+        private ImageSource? _originalImageSource;
+        public ImageSource? OriginalImageSource
+        {
+            get => _originalImageSource;
+            set { _originalImageSource = value; OnPropertyChanged(); }
+        }
+
+        private ImageSource? _processedImageSource;
+        public ImageSource? ProcessedImageSource
+        {
+            get => _processedImageSource;
+            set { _processedImageSource = value; OnPropertyChanged(); }
+        }
+
+        public ICommand StartVisionCommand { get; }
+        private bool _isVisionActive = false;
+        private CancellationTokenSource? _visionCts;
+
         private CancellationTokenSource? _streamCts;
         private CancellationTokenSource? _teleopCts; // 仅用于清理
         private CancellationTokenSource? _svgCts;
@@ -98,6 +120,7 @@ namespace Industrial.WpfClient.ViewModels
             UploadBatchCommand = new RelayCommand(async _ => await UploadBatchAsync(), _ => IsConnected);
             LiveTeleoperationCommand = new RelayCommand(async _ => await StartLiveTeleoperationAsync(), _ => IsConnected);
             DownloadSvgCommand = new RelayCommand(async _ => await DownloadSvgAsync(), _ => IsConnected);
+            StartVisionCommand = new RelayCommand(async _ => await StartVisionFeedAsync(), _ => IsConnected);
 
             ConnectCommand = new RelayCommand(async _ => await ConnectAsync(), _ => !IsConnected);
             DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => IsConnected);
@@ -368,7 +391,112 @@ namespace Industrial.WpfClient.ViewModels
 
 
 
-        public async Task DownloadSvgAsync()
+        // --- 机器视觉 图像处理 (Image Generation & conversion) ---
+        private RenderTargetBitmap CreateNoiseBitmap(int offset)
+        {
+            var rtb = new RenderTargetBitmap(300, 300, 96, 96, PixelFormats.Pbgra32);
+            var visual = new DrawingVisual();
+            using (var ctx = visual.RenderOpen())
+            {
+                ctx.DrawRectangle(Brushes.DarkSlateBlue, null, new Rect(0, 0, 300, 300));
+                ctx.DrawRectangle(Brushes.Crimson, null, new Rect(Math.Abs(Math.Sin(offset * 0.1)) * 200, Math.Abs(Math.Cos(offset * 0.1)) * 200, 100, 100));
+                ctx.DrawLine(new Pen(Brushes.White, 3), new Point(0, offset % 300), new Point(300, offset % 300));
+            }
+            rtb.Render(visual);
+            return rtb;
+        }
+
+        private byte[] ConvertBitmapToByteArray(BitmapSource bitmap)
+        {
+            var encoder = new JpegBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var ms = new MemoryStream();
+            encoder.Save(ms);
+            return ms.ToArray();
+        }
+
+        public async Task StartVisionFeedAsync()
+        {
+            if (_isVisionActive)
+            {
+                _isVisionActive = false;
+                GrpcMessages.Add("[gRPC] Stop Vision Streaming...");
+                return;
+            }
+            
+            _isVisionActive = true;
+            _visionCts = new CancellationTokenSource();
+            GrpcMessages.Add("[gRPC] 开启双向视频流 Machine Vision 推流...");
+
+            try
+            {
+                using var call = _grpcClient!.LiveMachineVision();
+
+                // 接收并解包后台灰度图
+                var readTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await foreach (var feed in call.ResponseStream.ReadAllAsync())
+                        {
+                            Application.Current?.Dispatcher?.Invoke(() =>
+                            {
+                                using var ms = new MemoryStream(feed.ImageData.ToByteArray());
+                                var image = new BitmapImage();
+                                image.BeginInit();
+                                image.CacheOption = BitmapCacheOption.OnLoad;
+                                image.StreamSource = ms;
+                                image.EndInit();
+                                ProcessedImageSource = image;
+                            });
+                        }
+                    }
+                    catch (Exception) { }
+                });
+
+                // 本地不断生成彩色侦测帧
+                int frameOffset = 0;
+                while (_isVisionActive)
+                {
+                    RenderTargetBitmap? rtb = null;
+                    byte[]? jpegBytes = null;
+                    
+                    Application.Current?.Dispatcher?.Invoke(() =>
+                    {
+                        rtb = CreateNoiseBitmap(frameOffset);
+                        OriginalImageSource = rtb;
+                        jpegBytes = ConvertBitmapToByteArray(rtb);
+                    });
+
+                    if (jpegBytes != null)
+                    {
+                        await call.RequestStream.WriteAsync(new VisionFrame
+                        {
+                            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            ImageData = Google.Protobuf.ByteString.CopyFrom(jpegBytes)
+                        });
+                    }
+
+                    frameOffset += 10;
+                    await Task.Delay(33, _visionCts.Token); // 约 30 FPS 上游推流
+                }
+
+                await call.RequestStream.CompleteAsync();
+                await readTask;
+                GrpcMessages.Add("[gRPC] Vision Streaming closed cleanly.");
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                GrpcMessages.Add($"[gRPC VisionError] {ex.Message}");
+            }
+            finally
+            {
+                _isVisionActive = false;
+                _visionCts?.Dispose();
+                _visionCts = null;
+            }
+        }        public async Task DownloadSvgAsync()
         {
             if (_svgCts != null)
             {

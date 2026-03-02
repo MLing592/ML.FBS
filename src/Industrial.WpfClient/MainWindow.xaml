@@ -90,6 +90,31 @@
                         <oxy:PlotView Grid.Row="1" Model="{Binding TrajectoryPlotModel}" Margin="10,0,10,10" Background="#1E1E1E"/>
                     </Grid>
                 </TabItem>
+                
+                <!-- 第三页：机器视觉实时双向流处理 -->
+                <TabItem Header="Machine Vision &amp; AI">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <WrapPanel Grid.Row="0" Margin="10" Orientation="Horizontal">
+                            <Button Content="Start Real-time Vision (Bidi Stream)" Command="{Binding StartVisionCommand}" Padding="10,5" Margin="0,0,5,0" Background="#FF333337" Foreground="LightGray"/>
+                        </WrapPanel>
+                        <Grid Grid.Row="1" Margin="10,0,10,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <GroupBox Grid.Column="0" Header="Original (WPF Generated)" Foreground="LightBlue" Margin="0,0,5,0">
+                                <Image Source="{Binding OriginalImageSource}" Stretch="Uniform" />
+                            </GroupBox>
+                            <GroupBox Grid.Column="1" Header="Processed (Server Grayscale)" Foreground="LightGreen" Margin="5,0,0,0">
+                                <Image Source="{Binding ProcessedImageSource}" Stretch="Uniform" />
+                            </GroupBox>
+                        </Grid>
+                    </Grid>
+                </TabItem>
             </TabControl>
             
             <GroupBox Grid.Row="1" Header="Live Teleoperation Feed (gRPC Bidi Stream)" Background="#2D2D30" Foreground="Orange">

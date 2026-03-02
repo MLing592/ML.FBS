@@ -19,6 +19,9 @@ service DeviceControl {
   
   // 5. 服务端流式 RPC (Server Streaming RPC): 服务器解析 SVG 图并下发轨迹坐标
   rpc DownloadSvgTrajectory (SvgRequest) returns (stream PointData);
+  
+  // 6. 双向流式 RPC (Bidirectional Streaming Rpc): 工业相机视觉实时帧率级流转处理
+  rpc LiveMachineVision (stream VisionFrame) returns (stream VisionFrame);
 }
 
 // 请求下载指定的 SVG
@@ -70,4 +73,10 @@ message TeleoperationFeed {
   double actual_velocity = 1;
   double actual_angle = 2;
   string status_warning = 3;
+}
+
+// 相机机器视觉帧
+message VisionFrame {
+  int64 timestamp = 1;
+  bytes image_data = 2; // raw image bytes
 }

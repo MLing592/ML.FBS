@@ -10,6 +10,10 @@ using Svg.Pathing;
 using Svg.Transforms;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using Google.Protobuf;
 
 namespace Industrial.Server.Services;
 
@@ -295,7 +299,7 @@ public class DeviceControlService : DeviceControl.DeviceControlBase
 
     private async Task SendPointAsync(IServerStreamWriter<PointData> responseStream, float x, float y, SvgTransformCollection? transforms)
     {
-        var pts = new PointF[] { new PointF(x, y) };
+        var pts = new System.Drawing.PointF[] { new System.Drawing.PointF(x, y) };
 
         // 应用形变 (包括用户图片中导出的旋转、平移等属性)
         if (transforms != null && transforms.Count > 0)
@@ -311,5 +315,44 @@ public class DeviceControlService : DeviceControl.DeviceControlBase
             Timestamp = DateTime.UtcNow.Ticks
         });
         await Task.Delay(5); // 控制下发流速
+    }
+
+    /// <summary>
+    /// 6. 双向流式 RPC (Bidirectional streaming RPC)
+    /// 相机图像帧处理。一边接收客户端上传的画面帧，一边服务端调用ImageSharp做实时灰度转换处理再推回
+    /// </summary>
+    public override async Task LiveMachineVision(IAsyncStreamReader<VisionFrame> requestStream, IServerStreamWriter<VisionFrame> responseStream, ServerCallContext context)
+    {
+        _logger.LogInformation("Live Machine Vision processing stream started.");
+        try
+        {
+            await foreach (var frame in requestStream.ReadAllAsync(context.CancellationToken))
+            {
+                if (frame.ImageData == null || frame.ImageData.Length == 0) continue;
+
+                // 在服务端极速处理图像
+                using var image = SixLabors.ImageSharp.Image.Load(frame.ImageData.ToByteArray());
+                image.Mutate(x => x.Grayscale()); // 转换为灰度图
+
+                using var ms = new MemoryStream();
+                image.Save(ms, new JpegEncoder()); // 重新保存为 Jpeg
+                
+                // 将灰度图流推回给客户端
+                await responseStream.WriteAsync(new VisionFrame
+                {
+                    Timestamp = frame.Timestamp,
+                    ImageData = ByteString.CopyFrom(ms.ToArray())
+                });
+            }
+            _logger.LogInformation("Machine Vision Stream Ended.");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Machine Vision Stream Cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Machine Vision Stream Error.");
+        }
     }
 }
