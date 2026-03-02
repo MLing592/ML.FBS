@@ -1,6 +1,5 @@
 ﻿using Grpc.Net.Client;
 using Industrial.Shared.Protos;
-using Microsoft.AspNetCore.SignalR.Client;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -18,9 +17,23 @@ namespace Industrial.WpfClient.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private readonly GrpcChannel _grpcChannel;
-        private readonly DeviceControl.DeviceControlClient _grpcClient;
-        private readonly HubConnection _signalrConnection;
+        private GrpcChannel? _grpcChannel;
+        private DeviceControl.DeviceControlClient? _grpcClient;
+
+        private bool _isConnected;
+        public bool IsConnected
+        {
+            get => _isConnected;
+            set
+            {
+                if (_isConnected != value)
+                {
+                    _isConnected = value;
+                    OnPropertyChanged();
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
 
         private string _statusText = "Disconnected";
         public string StatusText
@@ -30,15 +43,15 @@ namespace Industrial.WpfClient.ViewModels
         }
 
         public ObservableCollection<string> GrpcMessages { get; } = new ObservableCollection<string>();
-        public ObservableCollection<string> SignalRMessages { get; } = new ObservableCollection<string>();
 
         public ICommand StartCommand { get; }
         public ICommand StreamDataCommand { get; }
         public ICommand UploadBatchCommand { get; }
         public ICommand LiveTeleoperationCommand { get; }
-        public ICommand TriggerAlarmCommand { get; }
-        public ICommand SendLogToServerCommand { get; }
         public ICommand DownloadSvgCommand { get; }
+        
+        public ICommand ConnectCommand { get; }
+        public ICommand DisconnectCommand { get; }
 
         public PlotModel PlotModel { get; private set; }
         private LineSeries _vibrationSeries;
@@ -80,13 +93,14 @@ namespace Industrial.WpfClient.ViewModels
 
         public MainViewModel()
         {
-            StartCommand = new RelayCommand(async _ => await SendStartCommandAsync());
-            StreamDataCommand = new RelayCommand(async _ => await StartStreamingDataAsync());
-            UploadBatchCommand = new RelayCommand(async _ => await UploadBatchAsync());
-            LiveTeleoperationCommand = new RelayCommand(async _ => await StartLiveTeleoperationAsync());
-            TriggerAlarmCommand = new RelayCommand(async _ => await TriggerRemoteAlarmAsync());
-            SendLogToServerCommand = new RelayCommand(async _ => await SendLogToServerAsync());
-            DownloadSvgCommand = new RelayCommand(async _ => await DownloadSvgAsync());
+            StartCommand = new RelayCommand(async _ => await SendStartCommandAsync(), _ => IsConnected);
+            StreamDataCommand = new RelayCommand(async _ => await StartStreamingDataAsync(), _ => IsConnected);
+            UploadBatchCommand = new RelayCommand(async _ => await UploadBatchAsync(), _ => IsConnected);
+            LiveTeleoperationCommand = new RelayCommand(async _ => await StartLiveTeleoperationAsync(), _ => IsConnected);
+            DownloadSvgCommand = new RelayCommand(async _ => await DownloadSvgAsync(), _ => IsConnected);
+
+            ConnectCommand = new RelayCommand(async _ => await ConnectAsync(), _ => !IsConnected);
+            DisconnectCommand = new RelayCommand(_ => Disconnect(), _ => IsConnected);
 
             // --- OxyPlot 图表 1: 震动高频流 ---
             PlotModel = new PlotModel { Title = "Vibration Real-time Data", TextColor = OxyColors.White };
@@ -113,70 +127,51 @@ namespace Industrial.WpfClient.ViewModels
             };
             TrajectoryPlotModel.Series.Add(_trajectorySeries);
 
-            // --- 核心通信机制初始化 ---
-            
-            // 为了避免本地开发时没有安装/信任 SSL 证书导致的异常，我们忽略证书校验
-            var handler = new System.Net.Http.HttpClientHandler();
-            handler.ServerCertificateCustomValidationCallback = System.Net.Http.HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-
-            // 1. 初始化 gRPC 通道
-            var grpcOptions = new GrpcChannelOptions { HttpHandler = handler };
-            _grpcChannel = GrpcChannel.ForAddress("https://localhost:7212", grpcOptions); 
-            _grpcClient = new DeviceControl.DeviceControlClient(_grpcChannel);
-
-            // 2. 初始化 SignalR 连接
-            _signalrConnection = new HubConnectionBuilder()
-                .WithUrl("https://localhost:7212/hubs/deviceStatus", options =>
-                {
-                    options.HttpMessageHandlerFactory = _ => handler;
-                })
-                .WithAutomaticReconnect()
-                .Build();
-
-            // 绑定 SignalR 接收管道事件
-            BindSignalREvents();
-            
-            // 异步启动被动接收连接
-            _ = StartConnectionAsync();
         }
 
-        private void BindSignalREvents()
-        {
-            _signalrConnection.On<string, double>("ReceiveTemperatureWarning", (deviceId, temp) =>
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    SignalRMessages.Add($"[警告] 设备 {deviceId} 温度异常：{temp}°C");
-                });
-            });
-
-            _signalrConnection.On<int, string>("UpdateMachineState", (stateCode, description) =>
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    SignalRMessages.Add($"[状态更新] 代码:{stateCode} 描述:{description}");
-                });
-            });
-            
-            _signalrConnection.Closed += async (error) =>
-            {
-                StatusText = "Disconnected...";
-                await Task.Delay(new Random().Next(0,5) * 1000);
-                await StartConnectionAsync();
-            };
-        }
-
-        public async Task StartConnectionAsync()
+        public async Task ConnectAsync()
         {
             try
             {
-                await _signalrConnection.StartAsync();
-                StatusText = "Connected to SignalR Hub";
+                StatusText = "Connecting...";
+                
+                var handler = new System.Net.Http.SocketsHttpHandler
+                {
+                    SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+                    {
+                        RemoteCertificateValidationCallback = delegate { return true; }
+                    }
+                };
+                var grpcOptions = new GrpcChannelOptions { HttpHandler = handler };
+                _grpcChannel = GrpcChannel.ForAddress("https://localhost:7212", grpcOptions); 
+                _grpcClient = new DeviceControl.DeviceControlClient(_grpcChannel);
+                
+                // 启动尝试连接
+                await _grpcChannel.ConnectAsync();
+                
+                IsConnected = true;
+                StatusText = "Connected";
+                GrpcMessages.Add("[System] gRPC 连接建立成功。");
             }
             catch (Exception ex)
             {
-                StatusText = $"Connection Error: {ex.Message}";
+                IsConnected = false;
+                StatusText = $"Connect Failed: {ex.Message}";
+                GrpcMessages.Add($"[Error] 连接失败: {ex.Message}");
             }
+        }
+
+        public void Disconnect()
+        {
+            if (_grpcChannel != null)
+            {
+                _grpcChannel.Dispose();
+                _grpcChannel = null;
+                _grpcClient = null;
+            }
+            IsConnected = false;
+            StatusText = "Disconnected";
+            GrpcMessages.Add("[System] 已断开独立连接。");
         }
 
         public async Task StartStreamingDataAsync()
@@ -199,7 +194,7 @@ namespace Industrial.WpfClient.ViewModels
             try
             {
                 var request = new DataRequest { DeviceId = 1, StartTime = DateTime.UtcNow.ToString("O") };
-                using var call = _grpcClient.GetHistoricalData(request, cancellationToken: _streamCts.Token);
+                using var call = _grpcClient!.GetHistoricalData(request, cancellationToken: _streamCts.Token);
                 
                 int pointCount = 0;
                 await foreach (var point in call.ResponseStream.ReadAllAsync(_streamCts.Token))
@@ -236,7 +231,7 @@ namespace Industrial.WpfClient.ViewModels
             {
                 var request = new CommandRequest { DeviceId = 1, Action = "START" };
                 GrpcMessages.Add($"发送一元指令: {request.Action}...");
-                var reply = await _grpcClient.SendCommandAsync(request);
+                var reply = await _grpcClient!.SendCommandAsync(request);
                 
                 GrpcMessages.Add(reply.Success ? $"[指令成功] {reply.Message}" : $"[指令失败] {reply.Message}");
             }
@@ -258,7 +253,7 @@ namespace Industrial.WpfClient.ViewModels
 
             try
             {
-                using var call = _grpcClient.UploadBatchTrajectory();
+                using var call = _grpcClient!.UploadBatchTrajectory();
 
                 double currentX = 0;
                 double currentY = 0;
@@ -311,7 +306,7 @@ namespace Industrial.WpfClient.ViewModels
             {
                 // 不使用 cancellation token 以避免抛出流异常导致的服务器错误输出。
                 // 我们将通过 CompleteAsync() 处理优雅断开。
-                using var call = _grpcClient.LiveTeleoperation();
+                using var call = _grpcClient!.LiveTeleoperation();
                 
                 var readTask = Task.Run(async () => 
                 {
@@ -371,49 +366,7 @@ namespace Industrial.WpfClient.ViewModels
             }
         }
 
-        public async Task TriggerRemoteAlarmAsync()
-        {
-            SignalRMessages.Add("[内部] 正在请求触发全厂警报...");
-            try
-            {
-                var handler = new System.Net.Http.HttpClientHandler();
-                handler.ServerCertificateCustomValidationCallback = System.Net.Http.HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
-                using var http = new System.Net.Http.HttpClient(handler);
-                
-                var response = await http.PostAsync("https://localhost:7212/api/alarm/trigger", null);
-                if (!response.IsSuccessStatusCode)
-                {
-                    SignalRMessages.Add("[WebAPI] 触发失败");
-                }
-            }
-            catch (Exception ex)
-            {
-                 SignalRMessages.Add($"[WebAPI Error] {ex.Message}");
-            }
-        }
 
-        public async Task SendLogToServerAsync()
-        {
-            try
-            {
-                if (_signalrConnection.State == HubConnectionState.Connected)
-                {
-                    string msg = $"Client Status Report at {DateTime.Now:HH:mm:ss}: Everything is running smooth.";
-                    SignalRMessages.Add($"[SignalR] -> (发往服务端): {msg}");
-
-                    // WPF主动调用后端的强类型Hub方法 "SendClientLogToServer"
-                    await _signalrConnection.InvokeAsync("SendClientLogToServer", msg);
-                }
-                else
-                {
-                    SignalRMessages.Add("[SignalR] 当前未连接到后端，无法投递消息。");
-                }
-            }
-            catch (Exception ex)
-            {
-                SignalRMessages.Add($"[SignalR Error] 推流失败: {ex.Message}");
-            }
-        }
 
         public async Task DownloadSvgAsync()
         {
@@ -443,7 +396,7 @@ namespace Industrial.WpfClient.ViewModels
             try
             {
                 var request = new SvgRequest { FileName = "doge3.svg" };
-                using var call = _grpcClient.DownloadSvgTrajectory(request, cancellationToken: _svgCts.Token);
+                using var call = _grpcClient!.DownloadSvgTrajectory(request, cancellationToken: _svgCts.Token);
                 
                 await foreach (var point in call.ResponseStream.ReadAllAsync(_svgCts.Token))
                 {

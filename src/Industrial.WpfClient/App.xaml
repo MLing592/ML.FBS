@@ -4,6 +4,48 @@
              xmlns:local="clr-namespace:Industrial.WpfClient"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <!-- 覆盖系统默认按钮模板行为的现代暗色风 Style -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#FF333337"/>
+            <Setter Property="Foreground" Value="#D3D3D3"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#FF555555"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <!-- 自定义按钮物理结构 -->
+                        <Border x:Name="BtnBorder" 
+                                Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"/>
+                        </Border>
+
+                        <!-- 自主接管所有的悬停和按压触发状态 -->
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <!-- 鼠标停上去时稍微变亮，维持在深灰色系 -->
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#FF4A4A4F"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <!-- 如果点下去，背景压暗 -->
+                                <Setter TargetName="BtnBorder" Property="Background" Value="#FF222225"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <!-- 禁用时使整体变透明 -->
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Application.Resources>
 </Application>
