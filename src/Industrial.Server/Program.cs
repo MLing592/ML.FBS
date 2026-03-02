@@ -11,9 +11,22 @@ builder.Services.AddSignalR();
 // 注册 WebAPI (用以提供让外部系统或 WPF 去触发报警的 HTTP 接口)
 builder.Services.AddControllers();
 
+// 配置 CORS 以支持 Vue 客户端的 SignalR 和 WebAPI 请求
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowVueClient", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 var app = builder.Build();
 
 app.UseRouting();
+
+app.UseCors("AllowVueClient");
 
 // 映射终结点
 app.MapGrpcService<DeviceControlService>();
