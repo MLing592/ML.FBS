@@ -15,19 +15,37 @@
 
 ---
 
-## 🚀 二、 如何使用命令行启动每个项目以及启动后操作
+## 🚀 二、 如何启动项目及启动后操作
 
-推荐使用终端命令行 (CLI) 启动每一个独立微服务。请打开三个单独的 Terminal 工具。
+针对不同的使用场景，提供了一键自动化启动和分步手动启动两种方案。
 
-### 1. 启动主干服务端 (Server)
+### 📌 方式一：使用便捷脚本一键启动（推荐桌面用户）
+
+在代码的 `src` 目录下准备了可无痛体验整个运行生态的启动脚本。它会自动隐藏黑框并在浏览器中直接打开就绪状态的大屏。
+
+1. **一键启动所有（服务器 + WPF + Web 界面）**
+   您可以直接双击运行 **`src\StartAll.bat`**。
+   - `StartServer.bat`: 启动 ASP.NET Core 服务端（监听 https://localhost:7212）
+   - `StartWPF.bat`: 以后台无控制台模式（WindowStyle Hidden）启动 WPF 前端，不会出现多余黑框。
+   - `StartVue.bat`: 启动 Vite 本地服务器（端口定为 5175），成功后自动通过浏览器打开页面。
+
+如果您只需启动特定部件或者分别调试，也可以在 `src` 下双击对应的单一 `*.bat`。
+
+---
+
+### 📌 方式二：手动多终端隔离启动（推荐开发/调试）
+
+如果您希望看完整的生命周期日志，推荐使用终端命令行 (CLI) 启动每一个独立微服务。请打开三个单独的 Terminal 工具。
+
+#### 1. 启动主干服务端 (Server)
 进入项目根目录的终端，执行：
 ```bash
 cd src/Industrial.Server
-dotnet run
+dotnet run --launch-profile https
 ```
 *启动成功后监听在 `https://localhost:7212`。此常驻进程必须保持运行，它是整个系统的数据心脏。*
 
-### 2. 启动 WPF 工业操作台 (WpfClient)
+#### 2. 启动 WPF 工业操作台 (WpfClient)
 在第二个终端中，执行：
 ```bash
 cd src/Industrial.WpfClient
@@ -40,15 +58,15 @@ dotnet run
 4. 在 `Machine Vision & AI` 页签点击 **`Start Real-time Vision (Bidi Stream)`**，你将看到一个由 WPF 本地生成的假想“机械臂视觉侦测框”连续画面。以高达 30 帧的速率不断通过 gRPC 上传至服务端；服务端利用 `SixLabors.ImageSharp` 引擎进行工业级灰度转化和噪点过滤后，即时双向流式回传给 WPF 并在右侧屏幕渲染！
 5. 在最右侧面板的底部，点击 **`Bidi Stream`** 体验全双工遥控操作同步：左发请求、右接状态。
 
-### 3. 启动 Vue Web 可视化大屏 (Vue UI)
+#### 3. 启动 Vue Web 可视化大屏 (Vue UI)
 在第三个包含 Node.js 环境的终端中，执行：
 ```bash
 cd src/Industrial.Vue
 npm install
-npm run dev
+npm run dev -- --port 5175 --open
 ```
 **操作指南**：
-1. 浏览器打开界面 `http://localhost:5173`。
+1. 浏览器会弹出一个页面 `http://localhost:5175`。
 2. 点击左上角的 **`[打开链接]`** 发起对后端 SignalR 长连接的握手请求。
 3. 连接成功后，右侧面板将开始涌入系统日志追踪事件。左侧每 3s/4s 极速刷入机床状态参数、温度预警大屏曲线图表开始绘制。
 4. 通过右侧操作面板可以向下位机的服务端发送“下发指令”。点击 **`⟳ 手动拉取实时机床温度`** 按钮来插队发起一次独立的 WebAPI HTTP 拉取指令。
