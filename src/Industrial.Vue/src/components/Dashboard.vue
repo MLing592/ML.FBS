@@ -94,8 +94,8 @@
           </div>
         </div>
 
-        <!-- 2. System Logs (Middle Auto Panel) -->
-        <div class="tech-panel h-auto">
+        <!-- 2. System Logs (Middle Fixed Panel) -->
+        <div class="tech-panel" style="flex: 0 0 38%; overflow: hidden;">
           <div class="panel-header">系统事件追踪日志</div>
           <div class="panel-content scrollable">
             <div class="sys-log-list" style="position: relative;">
@@ -431,6 +431,7 @@ onUnmounted(() => {
   color: #00f8ff;
   font-weight: 500;
   letter-spacing: 1px;
+  white-space: nowrap;
 }
 
 .status-indicator {
