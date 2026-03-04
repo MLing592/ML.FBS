@@ -5,9 +5,9 @@ namespace Industrial.Server.Services;
 
 public class DataSimulationWorker : BackgroundService
 {
-    private readonly IHubContext<DeviceStatusHub, IDeviceStatusClient> _hubContext;
+    private readonly IHubContext<DeviceStatusHub> _hubContext;
 
-    public DataSimulationWorker(IHubContext<DeviceStatusHub, IDeviceStatusClient> hubContext)
+    public DataSimulationWorker(IHubContext<DeviceStatusHub> hubContext)
     {
         _hubContext = hubContext;
     }
@@ -40,7 +40,7 @@ public class DataSimulationWorker : BackgroundService
         {
             int stateCode = random.Next(100, 600);
             string desc = states[random.Next(states.Length)];
-            await _hubContext.Clients.Group("ValidClients").UpdateMachineState(stateCode, desc);
+            await _hubContext.Clients.Group("ValidClients").SendAsync("UpdateMachineState", stateCode, desc);
             
             // 区域1: 3秒发一次机床状态流
             await Task.Delay(3000, token);
@@ -53,7 +53,7 @@ public class DataSimulationWorker : BackgroundService
         while (!token.IsCancellationRequested)
         {
             double warningTemp = 85.0 + random.NextDouble() * 35.0; 
-            await _hubContext.Clients.Group("ValidClients").ReceiveTemperatureWarning($"DEV-{random.Next(10, 99)}A", Math.Round(warningTemp, 1));
+            await _hubContext.Clients.Group("ValidClients").SendAsync("ReceiveTemperatureWarning", $"DEV-{random.Next(10, 99)}A", Math.Round(warningTemp, 1));
             
             // 区域2: 4秒打一次温度预警流 (将会被绘制为曲线)
             await Task.Delay(4000, token);
@@ -66,7 +66,7 @@ public class DataSimulationWorker : BackgroundService
         while (!token.IsCancellationRequested)
         {
             double currentTemp = 40.0 + random.NextDouble() * 15.0; 
-            await _hubContext.Clients.Group("ValidClients").ReceiveCurrentTemperature(Math.Round(currentTemp, 1));
+            await _hubContext.Clients.Group("ValidClients").SendAsync("ReceiveCurrentTemperature", Math.Round(currentTemp, 1));
             
             // 区域3: 5秒自动更新右上角的“当前实时温度”
             await Task.Delay(5000, token);

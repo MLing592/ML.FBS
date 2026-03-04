@@ -10,7 +10,7 @@ public interface IDeviceStatusClient
     Task ReceiveCurrentTemperature(double temperature);
 }
 
-public class DeviceStatusHub : Hub<IDeviceStatusClient>
+public class DeviceStatusHub : Hub
 {
     // 客户端连接时的处理逻辑
     public override async Task OnConnectedAsync()
