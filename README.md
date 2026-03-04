@@ -244,3 +244,189 @@ sequenceDiagram
         end
     end
 ```
+
+---
+
+## 🔥 四、 Native AOT 发布指南
+
+本节记录将 `Industrial.Server` 发布为**原生 AOT（Ahead-Of-Time）** 独立执行文件时，所有必须处理的适配要点及原理。AOT 可以带来极速启动（毫秒级）、极低内存占用和无需目标机器安装 .NET Runtime 的优势，但也引入了严格的静态分析限制。
+
+### 📌 1. 项目文件配置 (`Industrial.Server.csproj`)
+
+在 `.csproj` 中启用 AOT 发布，并设置发布目录：
+
+```xml
+<PropertyGroup>
+  <TargetFramework>net8.0</TargetFramework>
+  <Nullable>enable</Nullable>
+  <ImplicitUsings>enable</ImplicitUsings>
+  <!-- 启用原生 AOT -->
+  <PublishAot>true</PublishAot>
+  <!-- 发布到解决方案 publish/Server 目录 -->
+  <PublishDir>..\..\publish\Server\</PublishDir>
+</PropertyGroup>
+```
+
+> **`PublishAot=true` 隐含了 `PublishTrimmed=true`。** AOT 会对所有未被静态引用的代码进行裁剪（Trimming），这是 AOT 运行时体积和性能优势的来源，也是所有适配问题的根本原因。
+
+**发布命令：**
+```bash
+# 发布（csproj 中已配置 PublishDir，无需额外指定路径）
+dotnet publish src\Industrial.Server\Industrial.Server.csproj -c Release
+```
+
+**前提条件：** Windows 上进行 AOT 发布必须安装 **Visual Studio 的"使用 C++ 的桌面开发"工作负载**（包含 MSVC 工具链）。
+
+---
+
+### 📌 2. 通过 PublishProfile 发布 (`.pubxml`)
+
+在 `Properties/PublishProfiles/FolderProfile.pubxml` 中，**必须同时声明** `<PublishAot>true</PublishAot>`，否则 Visual Studio 的"发布"按钮不会走 AOT 流程：
+
+```xml
+<PropertyGroup>
+  <PublishTrimmed>true</PublishTrimmed>
+  <PublishAot>true</PublishAot>
+  <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  <SelfContained>true</SelfContained>
+</PropertyGroup>
+```
+
+---
+
+### 📌 3. 端口配置：Kestrel 需要在代码中显式声明
+
+AOT 下运行时对反射能力的裁剪导致仅依赖 `appsettings.json` 的 Kestrel 端口绑定在某些场景下无法生效。推荐**直接在 `Program.cs` 代码中**通过 `ConfigureKestrel` 显式配置：
+
+```csharp
+builder.WebHost.ConfigureKestrel(options =>
+{
+    // HTTPS 端口 (需要 dev-cert 或正式证书)
+    options.ListenLocalhost(7212, o => o.UseHttps());
+    // HTTP 端口
+    options.ListenLocalhost(5268);
+});
+```
+
+**HTTPS dev-cert 首次生成与信任：**
+```bash
+dotnet dev-certs https --trust
+```
+
+> 如果目标机器是服务器生产环境，应将 `UseHttps()` 换为加载真实 PFX/PEM 证书；或直接只暴露 HTTP 端口并在后面加 Nginx/反代负责 TLS。
+
+---
+
+### 📌 4. SignalR 强类型 Hub 不兼容 AOT
+
+**问题根因：** `Hub<IDeviceStatusClient>` 的强类型客户端代理，在运行时需要 `System.Reflection.Emit` 动态生成实现了 `IDeviceStatusClient` 接口的代理类。AOT 下动态代码生成被完全禁止，导致抛出：
+```
+System.PlatformNotSupportedException: Dynamic code generation is not supported on this platform.
+```
+
+**解决方案：退回弱类型 Hub，用 `SendAsync` 替代强类型方法调用：**
+
+```csharp
+// ❌ AOT 不兼容：强类型 Hub
+public class DeviceStatusHub : Hub<IDeviceStatusClient> { }
+
+// ✅ AOT 兼容：弱类型 Hub
+public class DeviceStatusHub : Hub { }
+```
+
+所有注入和调用同步替换：
+
+```csharp
+// ❌ 不兼容
+private readonly IHubContext<DeviceStatusHub, IDeviceStatusClient> _hubContext;
+await _hubContext.Clients.Group("x").UpdateMachineState(code, desc);
+
+// ✅ 兼容
+private readonly IHubContext<DeviceStatusHub> _hubContext;
+await _hubContext.Clients.Group("x").SendAsync("UpdateMachineState", code, desc);
+```
+
+---
+
+### 📌 5. SignalR JSON 序列化失败
+
+**问题根因：** AOT 下 `System.Text.Json` 的反射序列化被禁用。SignalR 的 `JsonHubProtocol` 在向客户端发送消息时会尝试用反射序列化参数，从而抛出：
+```
+System.InvalidOperationException: Reflection-based serialization has been disabled for this application.
+```
+
+**解决方案：** 通过 `AddJsonProtocol` 显式配置 `DefaultJsonTypeInfoResolver`，它能处理基础类型（`string`、`double`、`int`）的序列化而不依赖运行时反射：
+
+```csharp
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.TypeInfoResolver =
+            new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver();
+    });
+```
+
+> **适用范围：** SignalR `SendAsync` 传递的参数为基础类型或简单值类型时，此方案完全可行。若需传递复杂自定义对象，则需进入下一条的 Source Generator 方案。
+
+---
+
+### 📌 6. Minimal API 返回自定义对象：JSON Source Generator
+
+**问题根因：** AOT 编译阶段，Minimal API 的 Source Generator 会扫描所有路由处理函数的返回类型并预生成 JSON 序列化代码。**匿名类型**（`new { message = "..." }`）以及**未注册的具名类型**都无法被静态分析追踪，运行时抛出：
+```
+System.NotSupportedException: JsonTypeInfo metadata for type 'XXX' was not provided.
+```
+
+**最佳解决方案：声明 `JsonSerializerContext` 并注册到 HTTP 选项链：**
+
+```csharp
+// 1. ❌ 不兼容：匿名类型
+return Results.Ok(new { message = "ok" });
+
+// 2. ✅ 兼容：声明具名 record + JsonSerializerContext
+internal record PushResult(string Message);
+
+[JsonSerializable(typeof(PushResult))]
+internal partial class AppJsonContext : JsonSerializerContext { }
+
+// 3. ✅ 在 Program.cs 中注册到 HTTP 选项
+builder.Services.ConfigureHttpJsonOptions(o =>
+    o.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonContext.Default));
+
+// 4. ✅ 正常返回
+return Results.Ok(new PushResult("Current temperature pushed"));
+```
+
+> **重要：** C# 顶级语句（Top-level statements）文件（`Program.cs`）中，类型声明（`record`、`class`）**必须放在文件末尾**，即所有顶级语句之后。否则编译器报 `顶级语句必须位于命名空间和类型声明之前`。
+
+---
+
+### 📌 7. 常见 AOT 不兼容场景速查表
+
+| 场景 | 问题根因 | 解决方案 |
+|------|---------|---------|
+| SignalR 强类型 Hub | 运行时 `Emit` 生成代理类 | 改用弱类型 `Hub`，`SendAsync` 发送 |
+| SignalR JSON 序列化 | 反射序列化被禁用 | `AddJsonProtocol` + `DefaultJsonTypeInfoResolver` |
+| Minimal API 返回匿名类型 | 匿名类型无法静态分析 | 改用具名 `record` + `[JsonSerializable]` 注册 |
+| `AddControllers()` / MVC | MVC 不支持 Trimming | 保留但接受警告，或改用 Minimal API |
+| EF Core 懒加载代理 | 运行时 `Emit` | 关闭懒加载，改用显式 `Include()` |
+| `JsonSerializer.Deserialize<T>` 泛型 | 反射求类型信息 | 使用 `[JsonSerializable]` Source Generator |
+| `Activator.CreateInstance(Type)` | 反射实例化 | 改为直接 `new`，或使用工厂模式 |
+| `DynamicProxy` / Castle | 运行时动态类生成 | 使用 Source Generator 替代，或放弃 AOT |
+| `Type.GetType(string)` 动态查类型 | 类型可能被裁剪 | 改为直接引用类型，或 `DynamicallyAccessedMembers` 标记 |
+
+---
+
+### 📌 8. 发布产物说明
+
+AOT 发布成功后，`publish/Server/` 目录包含：
+
+| 文件 | 说明 |
+|------|------|
+| `Industrial.Server.exe` | **唯一可执行文件**，约 30-40 MB，包含所有依赖，无需 .NET Runtime |
+| `Industrial.Server.pdb` | 调试符号文件（可删除，不影响运行） |
+| `appsettings.json` | 必须随 `.exe` 一起部署 |
+| `appsettings.Development.json` | 仅开发环境使用，生产部署可删除 |
+| `Assets/` | SVG 等静态资源文件夹（必须随 `.exe` 一起部署） |
+
+> **部署清单（最小化）：** `Industrial.Server.exe` + `appsettings.json` + `Assets/` 目录，三者放在同一目录下即可在任意 Windows x64 机器上运行，**无需安装 .NET**。
