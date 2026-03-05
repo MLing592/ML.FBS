@@ -175,7 +175,7 @@ const connectSignalR = async () => {
       .withAutomaticReconnect()
       .build();
 
-    connection.on('ReceiveTemperatureWarning', (deviceId: string, temp: number) => {
+    connection.on('ReceiveTemperatureWarning', (_deviceId: string, temp: number) => {
       temperatureAlerts.value.push({ time: currentTime.value.substring(11), temp });
       if (temperatureAlerts.value.length > 20) temperatureAlerts.value.shift();
       updateTempChart();
